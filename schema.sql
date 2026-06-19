@@ -40,12 +40,15 @@ CREATE INDEX generations_model_idx ON generations (model_id);
 -- 2. USERS & VEHICLES
 -- ============================================================================
 
+-- Public  = ping is shown to ANYONE using the app (the open radar).
+-- Private = hidden from the public radar; you can still see others (ghost).
+CREATE TYPE rider_visibility AS ENUM ('public', 'private');
+
 CREATE TABLE users (
-    id             UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
-    handle         TEXT UNIQUE NOT NULL,
-    created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
-    is_discoverable BOOLEAN NOT NULL DEFAULT true,   -- global visibility switch
-    ghost_mode      BOOLEAN NOT NULL DEFAULT false   -- see, but not be seen
+    id         UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+    handle     TEXT UNIQUE NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    visibility rider_visibility NOT NULL DEFAULT 'public'  -- public | private
 );
 
 CREATE TABLE vehicles (
@@ -136,12 +139,12 @@ RETURNS TABLE (
     heading    SMALLINT,
     speed_kph  SMALLINT,
     meters     DOUBLE PRECISION
-) LANGUAGE sql STABLE AS $$
+) LANGUAGE sql STABLE SECURITY DEFINER AS $$
     SELECT ll.user_id, u.handle, mk.name, md.name, g.name, g.year_start,
            mk.country, ll.heading, ll.speed_kph,
            ST_Distance(ll.geog, ST_MakePoint(p_lng, p_lat)::geography) AS meters
     FROM live_locations ll
-    JOIN users u       ON u.id = ll.user_id AND u.is_discoverable AND NOT u.ghost_mode
+    JOIN users u       ON u.id = ll.user_id AND u.visibility = 'public'
     JOIN vehicles v    ON v.id = ll.vehicle_id
     JOIN generations g ON g.id = v.generation_id
     JOIN models md     ON md.id = g.model_id

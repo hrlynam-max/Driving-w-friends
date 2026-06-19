@@ -85,13 +85,15 @@ CREATE TABLE generations (
 ### 2.2 Users & their active ride
 
 ```sql
+-- Public  = your ping is shown to ANYONE using the app (the open radar).
+-- Private = hidden from the public radar (you can still see others).
+CREATE TYPE rider_visibility AS ENUM ('public', 'private');
+
 CREATE TABLE users (
   id            UUID PRIMARY KEY REFERENCES auth.users(id),  -- Supabase Auth
   handle        TEXT UNIQUE NOT NULL,
   created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
-  -- privacy / discovery prefs
-  is_discoverable   BOOLEAN NOT NULL DEFAULT true,
-  ghost_mode        BOOLEAN NOT NULL DEFAULT false   -- see, but not be seen
+  visibility    rider_visibility NOT NULL DEFAULT 'public'   -- public | private
 );
 
 -- A user can own several cars but flies one "active" at a time.
@@ -143,7 +145,7 @@ SELECT ll.user_id, ll.heading, ll.speed_kph,
        g.year_start, mk.country,
        ST_Distance(ll.geog, ST_MakePoint(:lng, :lat)::geography) AS meters
 FROM live_locations ll
-JOIN users u   ON u.id = ll.user_id AND u.is_discoverable AND NOT u.ghost_mode
+JOIN users u   ON u.id = ll.user_id AND u.visibility = 'public'  -- private riders hidden
 JOIN vehicles v        ON v.id = ll.vehicle_id
 JOIN generations g     ON g.id = v.generation_id
 JOIN models md         ON md.id = g.model_id
@@ -240,8 +242,8 @@ The single biggest engineering risk in this app is **draining the battery and sa
 A "see cars near you, at night" app is a stalking/doxxing vector if built naively. Bake these in from v1:
 
 - **Server-authoritative obfuscation.** The client snaps to a ~50m grid, but an **Edge Function re-snaps** on write so a tampered client cannot publish a precise coordinate. Raw GPS never leaves the device and is never stored.
-- **Row Level Security** on every table. A user can read others' *obfuscated* live location only while `is_discoverable && !ghost_mode`; they can write only their own rows. Vehicle ownership is enforced in RLS, not just the UI.
-- **Ghost mode** (see-but-not-be-seen) and a global `is_discoverable` kill-switch.
+- **Public vs Private is the core visibility control.** A **Public** rider's *obfuscated* ping is shown to anyone on the app (the open radar); a **Private** rider is hidden from the public radar but can still browse others (ghost behavior). Default is `public` so the radar feels alive, with a one-tap switch to `private`.
+- **Row Level Security** on every table. Others' live locations are reachable only through `radar_nearby()`, which hard-filters to `visibility = 'public'`; users can write only their own rows. Vehicle ownership is enforced in RLS, not just the UI.
 - **Mutual-consent precise routing.** "Join Convoy" should reveal tighter location to the *other party only after both accept* — not let anyone draw a live path to a stranger unilaterally. (This is also a product-trust feature, not just safety.)
 - **Rate-limit & block/report** from day one; log abuse signals.
 - **TTL everything** so leaving the app removes you from the map automatically.

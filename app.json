@@ -1,0 +1,56 @@
+{
+  "expo": {
+    "name": "Overdrive",
+    "slug": "overdrive",
+    "scheme": "overdrive",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#08080B",
+    "splash": {
+      "backgroundColor": "#08080B",
+      "resizeMode": "contain"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.overdrive.app",
+      "infoPlist": {
+        "UIBackgroundModes": ["location", "fetch"],
+        "NSLocationWhenInUseUsageDescription": "Overdrive shows nearby rides on the radar while you have the app open.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Overdrive uses low-power location to wake the radar when you start driving, then turns tracking off when there's no action."
+      }
+    },
+    "android": {
+      "package": "com.overdrive.app",
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_BACKGROUND_LOCATION",
+        "FOREGROUND_SERVICE",
+        "FOREGROUND_SERVICE_LOCATION"
+      ]
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      [
+        "@rnmapbox/maps",
+        {
+          "RNMapboxMapsdownloadToken": "PUT_YOUR_MAPBOX_SECRET_DOWNLOAD_TOKEN_HERE"
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Overdrive uses low-power location to wake the radar when you start driving, then turns tracking off when there's no action.",
+          "isAndroidBackgroundLocationEnabled": true
+        }
+      ]
+    ],
+    "extra": {
+      "supabaseUrl": "PLACEHOLDER_REPLACED_BY_ENV",
+      "supabaseAnonKey": "PLACEHOLDER_REPLACED_BY_ENV",
+      "mapboxPublicToken": "PLACEHOLDER_REPLACED_BY_ENV"
+    }
+  }
+}

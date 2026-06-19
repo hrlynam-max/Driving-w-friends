@@ -165,10 +165,14 @@ The single biggest engineering risk in this app is **draining the battery and sa
 ```
 ┌─────────────────────────── DEVICE (React Native) ───────────────────────────┐
 │                                                                              │
-│  [GPS Sensor]                                                                │
-│      │  adaptive sample rate (see table)                                     │
+│  [Geofence / significant-change watcher]  ◄── default: GPS OFF (dormant)     │
+│      │  wakes only on real movement / nearby action                          │
 │      ▼                                                                        │
-│  LocationManager ── obfuscate (snap to ~50m grid) ── dedupe ── throttle      │
+│  [GPS Sensor]  (spun up only while awake; see state table)                   │
+│      │  adaptive sample rate                                                  │
+│      ▼                                                                        │
+│  LocationManager ── ACTIVITY GATE (off when "not much action")               │
+│      │              └─ obfuscate (snap ~50m grid) ── dedupe ── throttle       │
 │      │                                                                        │
 │      ▼  only on MEANINGFUL change                                            │
 │  RealtimeClient ──(WebSocket, single channel)──┐                             │
@@ -190,16 +194,18 @@ The single biggest engineering risk in this app is **draining the battery and sa
 
 ### 3.1 Battery strategy — the techniques that actually matter
 
-1. **Adaptive sampling, not fixed high-frequency.** Drive the GPS rate from context:
+1. **Sample only when there's action — otherwise the GPS is OFF.** The location stream is not a constant background drip with a slow floor; it has a true **dormant (OFF)** state and only spins up when there's a reason to. Drive the mode from context:
 
-   | State | Source | Update cadence |
+   | State | GPS | Broadcast cadence |
    |---|---|---|
-   | App backgrounded, user idle | Significant-location-change / geofence | Minutes / on move only |
-   | Foreground, on the Radar, stationary | `balanced` accuracy | ~10–20 s |
-   | Foreground, moving | `high` accuracy | ~3–5 s |
+   | **Dormant — "not much action"** (app backgrounded, *or* foreground but no nearby riders, *or* stationary past a timeout) | **OFF** | **None.** Stop the location subscription entirely; ping `expires_at` lapses and you drop off others' radar. |
+   | Wake trigger | low-power **geofence / significant-location-change** only | event-driven (cheap OS callback, no continuous GPS) |
+   | Foreground, on the Radar, moving | `high` accuracy | ~3–5 s |
    | **Active convoy (Link-Up in progress)** | `high` accuracy | ~1–2 s |
 
-   Only the small slice of users *actively in a convoy* needs the expensive 1–2s high-accuracy stream. Everyone else is cheap.
+   The default is **off**. A lightweight geofence/significant-change watcher (an OS-level callback, not continuous GPS) is the only thing running while dormant; it wakes the full pipeline when the rider actually starts moving, enters an area with active pings, or taps into the Radar. Only the small slice of users *actively in a convoy* runs the expensive 1–2s stream.
+
+   "Not much action" is concretely: app not foregrounded on the Radar, **or** zero discoverable riders within the radius, **or** stationary longer than a timeout (e.g. ~2 min). Any of those → kill the location subscription.
 
 2. **Distance filter before time filter.** Don't emit if the device moved < ~15m since the last sent point (`distanceFilter` on the location module). A car at a red light sends nothing.
 
@@ -220,7 +226,7 @@ The single biggest engineering risk in this app is **draining the battery and sa
 | Component | Responsibility |
 |---|---|
 | `RideSelector` | Drill-down picker Make→Model→Generation; writes active `vehicle`. |
-| `LocationManager` | Owns OS location subscription, accuracy mode switching, obfuscation, distance/time throttling. The single source of "should we emit?". |
+| `LocationManager` | Owns OS location subscription, accuracy mode switching, obfuscation, distance/time throttling. Holds the **activity gate**: keeps GPS *off* by default and only spins it up on a wake trigger (movement / nearby pings / Radar focus); tears it back down when "not much action." The single source of "should we even be tracking, and should we emit?". |
 | `RealtimeClient` | One WebSocket; presence join/track + broadcast; viewport (re)subscription. |
 | `RadarStore` (Zustand/Jotai) | Holds nearby pings; runs marker interpolation; viewport state. |
 | `MapView` | Mapbox dark style, animated car markers with heading arrows. |
